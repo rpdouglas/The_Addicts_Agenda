@@ -55,7 +55,7 @@
     <div id="homeScreen" style="display:block;">
       <div class="bg-white rounded-2xl shadow-lg p-6 sm:p-7 text-center relative">
         <img src="https://placehold.co/100x100/3b82f6/ffffff?text=AA" alt="The Addicts Agenda Logo" class="w-24 h-24 mx-auto mb-5 rounded-full shadow-md">
-        <div id="appVersion" class="absolute top-4 left-4 text-xs sm:text-sm text-gray-400 font-medium">V1.3</div>
+        <div id="appVersion" class="absolute top-4 left-4 text-xs sm:text-sm text-gray-400 font-medium">V1.4</div>
         <div class="absolute top-4 right-4">
           <button id="goToSettingsBtn" class="text-2xl text-gray-500 p-1 transition-transform duration-300 hover:rotate-45 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-full" title="Settings">&#x2699;</button>
         </div>
@@ -393,8 +393,48 @@
                 }
             },
             _renderStep: (stepKey) => {
-                const stepData = AppData.WORKBOOK_STEP_DATA[stepKey]; const answers = Storage.getWorkbookAnswers(stepKey, stepData.questions); let answerIndex = 0; let isFirstSection = true;
-                const questionsHtml = stepData.questions.map(q => { if (q.isSection) { const html = `${isFirstSection ? '' : '</div>'}<div class="workbook-section-header mt-4 -mx-6 px-6 py-2 bg-gray-100 border-t border-b border-gray-200 cursor-pointer flex justify-between items-center ${isFirstSection ? '' : 'collapsed'}"><h3 class="text-lg font-bold text-gray-700">${q.title}</h3><span class="collapse-icon text-xl text-gray-500">▼</span></div><div class="section-content px-1 ${isFirstSection ? '' : 'collapsed'}">`; isFirstSection = false; return html; } else { const html = `<div class="pt-4"><h4 class="font-semibold text-gray-800 mb-2">${answerIndex + 1}. ${q}</h4><textarea data-question-index="${answerIndex}" class="w-full h-32 p-2 border border-gray-300 rounded-lg" placeholder="Write your honest answer here...">${answers[answerIndex] || ''}</textarea></div>`; answerIndex++; return html; } }).join('') + '</div>';
+                const stepData = AppData.WORKBOOK_STEP_DATA[stepKey];
+                const answers = Storage.getWorkbookAnswers(stepKey, stepData.questions);
+                
+                let sections = [];
+                let currentSection = null;
+
+                stepData.questions.forEach(q => {
+                    if (q.isSection) {
+                        if (currentSection) sections.push(currentSection);
+                        currentSection = { title: q.title, questions: [] };
+                    } else if (currentSection) {
+                        currentSection.questions.push(q);
+                    }
+                });
+                if (currentSection) sections.push(currentSection);
+                
+                let overallAnswerIndex = 0;
+                const questionsHtml = sections.map((section, sectionIndex) => {
+                    const sectionAnswers = answers.slice(overallAnswerIndex, overallAnswerIndex + section.questions.length);
+                    const totalQuestions = section.questions.length;
+                    const answeredQuestions = sectionAnswers.filter(a => a && a.trim() !== '').length;
+                    const percentage = totalQuestions > 0 ? Math.round((answeredQuestions / totalQuestions) * 100) : 0;
+
+                    const sectionQuestionHtml = section.questions.map(q => {
+                        const html = `<div class="pt-4"><h4 class="font-semibold text-gray-800 mb-2">${overallAnswerIndex + 1}. ${q}</h4><textarea data-question-index="${overallAnswerIndex}" class="w-full h-32 p-2 border border-gray-300 rounded-lg" placeholder="Write your honest answer here...">${answers[overallAnswerIndex] || ''}</textarea></div>`;
+                        overallAnswerIndex++;
+                        return html;
+                    }).join('');
+
+                    return `
+                        <div class="workbook-section-header mt-4 -mx-6 px-6 py-2 bg-blue-500 text-white cursor-pointer flex justify-between items-center rounded-t-lg collapsed">
+                            <h3 class="text-lg font-bold">${section.title}</h3>
+                            <div class="flex items-center">
+                                <span class="section-percent text-white/80 mr-4">${percentage}%</span>
+                                <span class="collapse-icon text-xl">▼</span>
+                            </div>
+                        </div>
+                        <div class="section-content px-4 py-2 border border-t-0 border-gray-300 rounded-b-lg collapsed">
+                            ${sectionQuestionHtml}
+                        </div>`;
+                }).join('');
+
                 const body = `<div id="workbookView" data-step="${stepKey}">${questionsHtml}<p id="saveStatus" class="text-green-600 font-semibold h-6 mt-4"></p><div class="mt-6 flex justify-between items-center">${BaseButton('backToWorkbooksBtn', 'All Steps')}<div class="flex gap-3">${BaseButton('saveWorkbookBtn', 'Save')}${HomeButton()}</div></div></div>`;
                 ViewManager.renderContentCard(stepData.title, '', body);
                 document.querySelectorAll('.workbook-section-header').forEach(header => { header.addEventListener('click', () => { header.classList.toggle('collapsed'); header.nextElementSibling.classList.toggle('collapsed'); }); });
@@ -416,6 +456,7 @@
                 statusEl.textContent = 'Progress Saved!'; 
                 setTimeout(() => { statusEl.textContent = ''; }, 3000); 
                 WorkbookLogic.updateWorkbookCompletionStats();
+                WorkbookLogic._renderStep(stepKey); // Re-render to update section percentages
             },
             exportAllToPdf: () => {
                 const { jsPDF } = window.jspdf; const doc = new jsPDF(); const margin = 15; const pageHeight = doc.internal.pageSize.getHeight(); let y = margin;
