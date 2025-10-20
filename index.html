@@ -46,6 +46,9 @@
     .collapsed .collapse-icon {
       transform: rotate(-90deg);
     }
+    .tag {
+        cursor: pointer;
+    }
   </style>
 </head>
 
@@ -55,7 +58,7 @@
     <div id="homeScreen" style="display:block;">
       <div class="bg-white rounded-2xl shadow-lg p-6 sm:p-7 text-center relative">
         <img src="https://placehold.co/100x100/3b82f6/ffffff?text=AA" alt="The Addicts Agenda Logo" class="w-24 h-24 mx-auto mb-5 rounded-full shadow-md">
-        <div id="appVersion" class="absolute top-4 left-4 text-xs sm:text-sm text-gray-400 font-medium">V1.4</div>
+        <div id="appVersion" class="absolute top-4 left-4 text-xs sm:text-sm text-gray-400 font-medium">V1.6</div>
         <div class="absolute top-4 right-4">
           <button id="goToSettingsBtn" class="text-2xl text-gray-500 p-1 transition-transform duration-300 hover:rotate-45 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-full" title="Settings">&#x2699;</button>
         </div>
@@ -162,7 +165,7 @@
         const HomeButton = () => BaseButton('homeBtn', 'Home');
 
         // --- START: STORAGE ---
-        const SOBER_DATE_KEY = 'soberDate'; const TODO_KEY = 'addictsAgendaTodoList'; const JOURNAL_KEY = 'addictsAgendaJournalEntries'; const PROMPT_KEY = 'addictsAgendaCustomPrompts';
+        const SOBER_DATE_KEY = 'soberDate'; const TODO_KEY = 'addictsAgendaTodoList'; const JOURNAL_KEY = 'addictsAgendaJournalEntries'; const PROMPT_KEY = 'addictsAgendaCustomPrompts'; const ALL_TAGS_KEY = 'addictsAgendaAllTags';
         const WORKBOOK_KEYS = { step1: 'addictsAgendaWorkbookStep1', step2: 'addictsAgendaWorkbookStep2', step3: 'addictsAgendaWorkbookStep3', step4: 'addictsAgendaWorkbookStep4', step5: 'addictsAgendaWorkbookStep5', step6: 'addictsAgendaWorkbookStep6', step7: 'addictsAgendaWorkbookStep7', step8: 'addictsAgendaWorkbookStep8', step9: 'addictsAgendaWorkbookStep9', step10: 'addictsAgendaWorkbookStep10', step11: 'addictsAgendaWorkbookStep11', step12: 'addictsAgendaWorkbookStep12' };
         const get = (key) => localStorage.getItem(key); const set = (key, value) => localStorage.setItem(key, JSON.stringify(value));
         const _getWorkbookAnswers = (key, questions) => {
@@ -174,9 +177,15 @@
             saveSoberDate: (dateStr) => localStorage.setItem(SOBER_DATE_KEY, dateStr), loadSoberDate: () => localStorage.getItem(SOBER_DATE_KEY) || '',
             getTodoList: () => { try { return JSON.parse(get(TODO_KEY)) || []; } catch (e) { return []; } }, saveTodoList: (list) => set(TODO_KEY, list),
             getSavedEntries: () => { try { return JSON.parse(get(JOURNAL_KEY)) || {}; } catch (e) { return {}; } },
-            saveEntry: (dateKey, content) => { const entries = Storage.getSavedEntries(); entries[dateKey] = content; set(JOURNAL_KEY, entries); },
-            loadEntry: (dateKey) => Storage.getSavedEntries()[dateKey] || '',
+            saveEntry: (dateKey, entry) => { const entries = Storage.getSavedEntries(); entries[dateKey] = entry; set(JOURNAL_KEY, entries); },
+            loadEntry: (dateKey) => { 
+                const entry = Storage.getSavedEntries()[dateKey];
+                if (typeof entry === 'string') return { content: entry, tags: [] };
+                return entry || { content: '', tags: [] };
+             },
             getCustomPrompts: () => { try { return JSON.parse(get(PROMPT_KEY)) || []; } catch (e) { return []; } }, saveCustomPrompts: (prompts) => set(PROMPT_KEY, prompts),
+            getAllTags: () => { try { return JSON.parse(get(ALL_TAGS_KEY)) || []; } catch (e) { return []; } },
+            saveAllTags: (tags) => set(ALL_TAGS_KEY, tags),
             getWorkbookAnswers: (stepKey, questions) => _getWorkbookAnswers(WORKBOOK_KEYS[stepKey], questions), saveWorkbookAnswers: (stepKey, answers) => set(WORKBOOK_KEYS[stepKey], answers),
         };
 
@@ -241,7 +250,14 @@
             }
         };
         const JournalLogic = {
-            _render: () => { const jEntry = document.getElementById('journalEntryView'); const jList = document.getElementById('journalListView'); const pManager = document.getElementById('promptManagerView'); if (jEntry) JournalLogic.showJournalEntryView(currentJournalKey); else if (jList) JournalLogic.showJournalListView(); else if (pManager) JournalLogic.showPromptManagerView(); },
+            _render: (filterTag = '') => { 
+                const jEntry = document.getElementById('journalEntryView'); 
+                const jList = document.getElementById('journalListView'); 
+                const pManager = document.getElementById('promptManagerView'); 
+                if (jEntry) JournalLogic.showJournalEntryView(currentJournalKey); 
+                else if (jList) JournalLogic.showJournalListView(document.getElementById('journalSearch').value, filterTag); 
+                else if (pManager) JournalLogic.showPromptManagerView(); 
+            },
             showJournalWithCopingCard: (cardText) => {
                 JournalLogic.showJournalEntryView();
                 setTimeout(() => {
@@ -260,17 +276,110 @@
                 }, 0);
             },
             showJournalEntryView: (dateKey = null) => {
-                currentJournalKey = dateKey || DateUtils.getFormattedDate(new Date()); const prompts = [...AppData.DEFAULT_PROMPTS, ...Storage.getCustomPrompts()]; const promptOptions = prompts.map(p => `<option value="${p.template}">${p.name}</option>`).join('');
-                const body = `<div id="journalEntryView"><div class="flex justify-between items-center mb-4"><label for="entryDate" class="font-semibold text-gray-700">Date:</label><input type="date" id="entryDate" value="${currentJournalKey}" max="${DateUtils.getFormattedDate(new Date())}" class="p-2 border border-gray-300 rounded-lg"></div><div class="flex gap-2 items-center mb-4"><select id="promptSelect" class="flex-grow p-2 border border-gray-300 rounded-lg bg-white">${promptOptions}</select>${BaseButton('managePromptsBtn', 'Manage', 'py-2 px-3 !bg-white !text-gray-700 border border-gray-300 hover:!bg-gray-100')}</div><textarea id="journalEntry" class="w-full h-64 p-3 border border-gray-300 rounded-lg" placeholder="What's on your mind today?">${Storage.loadEntry(currentJournalKey)}</textarea><div class="mt-6 flex justify-between items-center">${BaseButton('viewAllEntriesBtn', 'View All', '!bg-white !text-gray-700 border border-gray-300 hover:!bg-gray-100')}<div class="flex gap-3">${BaseButton('saveJournalBtn', 'Save')}${HomeButton()}</div></div></div>`;
-                const title = `Reflection for ${DateUtils.formatDateForDisplay(currentJournalKey)}`; ViewManager.renderContentCard(title, "Use this space to process cravings, track progress, or reflect.", body);
-                document.getElementById('entryDate').addEventListener('change', (e) => JournalLogic.showJournalEntryView(e.target.value)); document.getElementById('promptSelect').addEventListener('change', JournalLogic.handlePromptSelect); document.getElementById('managePromptsBtn').addEventListener('click', JournalLogic.showPromptManagerView); document.getElementById('saveJournalBtn').addEventListener('click', JournalLogic.handleSave); document.getElementById('viewAllEntriesBtn').addEventListener('click', JournalLogic.showJournalListView); document.getElementById('homeBtn').addEventListener('click', () => ViewManager.showView('homeScreen'));
+                currentJournalKey = dateKey || DateUtils.getFormattedDate(new Date()); 
+                const entry = Storage.loadEntry(currentJournalKey);
+                const prompts = [...AppData.DEFAULT_PROMPTS, ...Storage.getCustomPrompts()]; 
+                const promptOptions = prompts.map(p => `<option value="${p.template}">${p.name}</option>`).join('');
+                const body = `<div id="journalEntryView">
+                    <div class="flex justify-between items-center mb-4">
+                        <label for="entryDate" class="font-semibold text-gray-700">Date:</label>
+                        <input type="date" id="entryDate" value="${currentJournalKey}" max="${DateUtils.getFormattedDate(new Date())}" class="p-2 border border-gray-300 rounded-lg">
+                    </div>
+                    <div class="flex gap-2 items-center mb-4">
+                        <select id="promptSelect" class="flex-grow p-2 border border-gray-300 rounded-lg bg-white">${promptOptions}</select>
+                        ${BaseButton('managePromptsBtn', 'Manage', 'py-2 px-3 !bg-white !text-gray-700 border border-gray-300 hover:!bg-gray-100')}
+                    </div>
+                    <textarea id="journalEntry" class="w-full h-64 p-3 border border-gray-300 rounded-lg" placeholder="What's on your mind today?">${entry.content}</textarea>
+                    <div class="mt-4">
+                        <label for="journalTags" class="font-semibold text-gray-700">Tags (comma-separated):</label>
+                        <input type="text" id="journalTags" value="${entry.tags.join(', ')}" class="w-full p-2 mt-1 border border-gray-300 rounded-lg">
+                    </div>
+
+                    <div class="mt-4">
+                        ${BaseButton('toggleAIHelperBtn', 'Help Me Write', '!bg-indigo-500 hover:!bg-indigo-600 w-full')}
+                    </div>
+
+                    <div id="aiHelper" class="mt-4 p-4 border border-gray-200 rounded-lg bg-gray-50 hidden">
+                        <p class="font-semibold text-gray-700 mb-2">AI Writing Assistant</p>
+                        <div class="flex gap-2">
+                             <input type="text" id="aiPromptInput" placeholder="e.g., Help me expand on this feeling..." class="flex-grow p-2 border border-gray-300 rounded-lg">
+                             <button id="aiSendBtn" class="py-2 px-4 rounded-lg font-semibold text-white bg-indigo-500 hover:bg-indigo-600">Send</button>
+                        </div>
+                        <div id="aiResponse" class="mt-3 p-3 bg-white rounded-md border min-h-[50px]"></div>
+                    </div>
+
+
+                    <div class="mt-6 flex justify-between items-center">
+                        ${BaseButton('viewAllEntriesBtn', 'View All', '!bg-white !text-gray-700 border border-gray-300 hover:!bg-gray-100')}
+                        <div class="flex gap-3">${BaseButton('saveJournalBtn', 'Save')}${HomeButton()}</div>
+                    </div>
+                </div>`;
+                const title = `Reflection for ${DateUtils.formatDateForDisplay(currentJournalKey)}`; 
+                ViewManager.renderContentCard(title, "Use this space to process cravings, track progress, or reflect.", body);
+                
+                document.getElementById('toggleAIHelperBtn').addEventListener('click', JournalLogic.toggleAIHelper);
+                document.getElementById('aiSendBtn').addEventListener('click', JournalLogic.handleAIHelperSend);
+
+                document.getElementById('entryDate').addEventListener('change', (e) => JournalLogic.showJournalEntryView(e.target.value)); 
+                document.getElementById('promptSelect').addEventListener('change', JournalLogic.handlePromptSelect); 
+                document.getElementById('managePromptsBtn').addEventListener('click', JournalLogic.showPromptManagerView); 
+                document.getElementById('saveJournalBtn').addEventListener('click', JournalLogic.handleSave); 
+                document.getElementById('viewAllEntriesBtn').addEventListener('click', JournalLogic.showJournalListView); 
+                document.getElementById('homeBtn').addEventListener('click', () => ViewManager.showView('homeScreen'));
             },
-            showJournalListView: () => {
-                const entries = Storage.getSavedEntries(); const sortedKeys = Object.keys(entries).sort().reverse();
-                const listItems = sortedKeys.length ? sortedKeys.map(key => `<li class="flex justify-between items-center py-3 border-b border-gray-200"><span>${DateUtils.formatDateForDisplay(key)}</span>${BaseButton(`view-entry-${key}`, 'View', '!py-1 !px-3 !bg-white !text-gray-700 border border-gray-300 hover:!bg-gray-100 view-entry-btn')}</li>`).join('') : '<li class="text-center text-gray-500 py-4">No entries saved yet.</li>';
-                const body = `<div id="journalListView"><ul class="list-none p-0">${listItems}</ul><div class="mt-6 flex justify-between items-center">${BaseButton('newEntryBtn', "Write Today's Entry")}${HomeButton()}</div></div>`;
+            showJournalListView: (searchTerm = '', filterTag = '') => {
+                 const entries = Storage.getSavedEntries(); 
+                 const sortedKeys = Object.keys(entries).sort().reverse();
+                 const allTags = Storage.getAllTags();
+
+                 const filteredKeys = sortedKeys.filter(key => {
+                    const entry = Storage.loadEntry(key);
+                    const contentMatch = searchTerm ? entry.content.toLowerCase().includes(searchTerm.toLowerCase()) : true;
+                    const tagMatch = filterTag ? entry.tags.includes(filterTag) : true;
+                    return contentMatch && tagMatch;
+                 });
+                 
+                 const listItems = filteredKeys.length ? filteredKeys.map(key => {
+                    const entry = Storage.loadEntry(key);
+                    const tagsHtml = entry.tags.map(tag => `<span class="tag bg-blue-100 text-blue-800 text-xs font-semibold mr-2 px-2.5 py-0.5 rounded" data-tag="${tag}">${tag}</span>`).join('');
+                    return `<li class="flex flex-col items-start py-3 border-b border-gray-200">
+                                <div class="flex justify-between items-center w-full">
+                                    <span class="font-semibold">${DateUtils.formatDateForDisplay(key)}</span>
+                                    ${BaseButton(`view-entry-${key}`, 'View', '!py-1 !px-3 !bg-white !text-gray-700 border border-gray-300 hover:!bg-gray-100 view-entry-btn')}
+                                </div>
+                                <div class="mt-2">${tagsHtml}</div>
+                           </li>`
+                 }).join('') : '<li class="text-center text-gray-500 py-4">No entries found.</li>';
+                
+                 const tagFilterOptions = allTags.map(tag => `<option value="${tag}">${tag}</option>`).join('');
+
+                const body = `<div id="journalListView">
+                        <div class="flex gap-2 mb-4">
+                           <input type="search" id="journalSearch" placeholder="Search entries..." class="flex-grow p-2 border border-gray-300 rounded-lg" value="${searchTerm}">
+                           <select id="tagFilter" class="p-2 border border-gray-300 rounded-lg bg-white"><option value="">All Tags</option>${tagFilterOptions}</select>
+                        </div>
+                         <ul class="list-none p-0">${listItems}</ul>
+                         <div id="aiInsightsSection" class="mt-6"></div>
+                         <div class="mt-6 flex justify-between items-center">
+                            <div>
+                                ${BaseButton('newEntryBtn', "Write Today's Entry")}
+                                ${BaseButton('aiInsightsBtn', 'Get AI Insights')}
+                            </div>
+                            ${HomeButton()}
+                        </div>
+                    </div>`;
                 ViewManager.renderContentCard('Journal Entries', '', body);
-                document.querySelectorAll('.view-entry-btn').forEach(btn => btn.addEventListener('click', (e) => { const key = e.target.id.replace('view-entry-',''); JournalLogic.showJournalEntryView(key);})); document.getElementById('newEntryBtn').addEventListener('click', () => JournalLogic.showJournalEntryView()); document.getElementById('homeBtn').addEventListener('click', () => ViewManager.showView('homeScreen'));
+                
+                document.getElementById('tagFilter').value = filterTag;
+
+                document.getElementById('journalSearch').addEventListener('input', (e) => JournalLogic.showJournalListView(e.target.value, document.getElementById('tagFilter').value));
+                document.getElementById('tagFilter').addEventListener('change', (e) => JournalLogic.showJournalListView(document.getElementById('journalSearch').value, e.target.value));
+
+                document.querySelectorAll('.view-entry-btn').forEach(btn => btn.addEventListener('click', (e) => { const key = e.target.id.replace('view-entry-',''); JournalLogic.showJournalEntryView(key);})); 
+                document.querySelectorAll('.tag').forEach(tagEl => tagEl.addEventListener('click', (e) => JournalLogic.showJournalListView('', e.target.dataset.tag)));
+                document.getElementById('newEntryBtn').addEventListener('click', () => JournalLogic.showJournalEntryView()); 
+                document.getElementById('aiInsightsBtn').addEventListener('click', JournalLogic.getAIInsights);
+                document.getElementById('homeBtn').addEventListener('click', () => ViewManager.showView('homeScreen'));
             },
             showPromptManagerView: () => {
                 const prompts = Storage.getCustomPrompts(); const promptItems = prompts.length ? prompts.map((p, i) => `<li class="flex justify-between items-center py-2 border-b border-gray-200"><span class="text-gray-700">${p.name}</span><button class="delete-prompt-btn py-1 px-3 rounded-md font-semibold text-white bg-red-500 hover:bg-red-600" data-index="${i}">Delete</button></li>`).join('') : '<li class="text-center text-gray-500 py-4">No custom prompts.</li>';
@@ -278,9 +387,82 @@
                 ViewManager.renderContentCard('Manage Custom Prompts', 'Click a prompt to delete it.', body);
                 document.getElementById('addCustomPromptBtn').addEventListener('click', JournalLogic.handlePromptAdd); document.querySelectorAll('.delete-prompt-btn').forEach(btn => btn.addEventListener('click', (e) => { if (confirm('Are you sure you want to delete this prompt?')) { let prompts = Storage.getCustomPrompts(); prompts.splice(e.target.dataset.index, 1); Storage.saveCustomPrompts(prompts); JournalLogic._render(); } })); document.getElementById('backToEntryBtn').addEventListener('click', () => JournalLogic.showJournalEntryView(currentJournalKey));
             },
-            handleSave: () => { const content = document.getElementById('journalEntry').value; const dateKey = document.getElementById('entryDate').value; if (content.trim() === '') return alert('Journal entry is empty.'); if (dateKey) { Storage.saveEntry(dateKey, content); alert(`Entry for ${dateKey} saved!`); } else { alert('Please select a date.'); } },
+            handleSave: () => { 
+                const content = document.getElementById('journalEntry').value; 
+                const dateKey = document.getElementById('entryDate').value;
+                const tagsInput = document.getElementById('journalTags').value;
+                const tags = tagsInput.split(',').map(tag => tag.trim()).filter(tag => tag);
+
+                if (content.trim() === '') return alert('Journal entry is empty.'); 
+                if (dateKey) { 
+                    const entry = { content, tags };
+                    Storage.saveEntry(dateKey, entry); 
+
+                    const allTags = Storage.getAllTags();
+                    tags.forEach(tag => {
+                        if (!allTags.includes(tag)) {
+                            allTags.push(tag);
+                        }
+                    });
+                    Storage.saveAllTags(allTags.sort());
+
+                    alert(`Entry for ${dateKey} saved!`); 
+                } else { alert('Please select a date.'); } 
+            },
             handlePromptAdd: () => { const input = document.getElementById('customPromptInput'); if (input.value.trim()) { let prompts = Storage.getCustomPrompts(); prompts.push({ name: input.value.trim(), template: input.value.trim() }); Storage.saveCustomPrompts(prompts); JournalLogic._render(); } else { alert('Please enter prompt text.'); } },
-            handlePromptSelect: (event) => { const template = event.target.value; const textarea = document.getElementById('journalEntry'); if (template && (textarea.value.trim() === "" || confirm("Apply template? This will overwrite your current entry."))) { textarea.value = template; } event.target.selectedIndex = 0; }
+            handlePromptSelect: (event) => { const template = event.target.value; const textarea = document.getElementById('journalEntry'); if (template && (textarea.value.trim() === "" || confirm("Apply template? This will overwrite your current entry."))) { textarea.value = template; } event.target.selectedIndex = 0; },
+            getAIInsights: async () => {
+                const insightsSection = document.getElementById('aiInsightsSection');
+                insightsSection.innerHTML = `<div class="p-4 bg-gray-50 rounded-lg border border-gray-200 text-center"><div class="border-4 border-gray-200 border-t-blue-600 rounded-full w-8 h-8 animate-spin mx-auto my-5"></div><p>Analyzing your entries...</p></div>`;
+
+                const entries = Storage.getSavedEntries();
+                const recentEntries = Object.keys(entries).sort().reverse().slice(0, 15).map(key => `Date: ${key}\nEntry: ${Storage.loadEntry(key).content}`).join('\n\n---\n\n');
+                
+                if (!recentEntries) {
+                    insightsSection.innerHTML = `<div class="p-4 bg-yellow-50 text-yellow-800 rounded-lg border border-yellow-200">Not enough journal entries to analyze. Write a few entries and try again!</div>`;
+                    return;
+                }
+
+                const query = `As a compassionate recovery coach, analyze the following journal entries from someone in addiction recovery. Please identify recurring themes, emotions, and potential triggers. Frame your insights in a supportive and encouraging tone. Here are the entries:\n\n${recentEntries}`;
+                const system = "You are an AI recovery coach providing insights on journal entries. Your tone is supportive, non-judgmental, and focused on identifying patterns for growth.";
+                
+                const insights = await ReflectionLogic.fetchWithRetry(query, system);
+                
+                const formattedInsights = insights.replace(/\n/g, '<br>');
+                insightsSection.innerHTML = `<div class="p-4 bg-blue-50 rounded-lg border border-blue-200"><h3 class="text-xl font-bold text-blue-700 mb-2">Your AI Recovery Insights</h3><p class="text-gray-700">${formattedInsights}</p></div>`;
+            },
+            toggleAIHelper: () => {
+                const helper = document.getElementById('aiHelper');
+                helper.classList.toggle('hidden');
+            },
+            handleAIHelperSend: async () => {
+                const aiResponseEl = document.getElementById('aiResponse');
+                const aiPromptInput = document.getElementById('aiPromptInput');
+                const journalEntry = document.getElementById('journalEntry');
+
+                const userPrompt = aiPromptInput.value.trim();
+                if (!userPrompt) return;
+
+                aiResponseEl.innerHTML = `<div class="border-4 border-gray-200 border-t-indigo-500 rounded-full w-6 h-6 animate-spin"></div>`;
+
+                const fullPrompt = `Based on my journal entry so far:\n\n"${journalEntry.value}"\n\nAnd my request: "${userPrompt}"\n\nPlease provide a helpful continuation or reflection.`;
+                const system = "You are a supportive journal assistant for someone in recovery. Help them explore their thoughts. Respond concisely with only the suggested text to add to their journal.";
+
+                const suggestion = await ReflectionLogic.fetchWithRetry(fullPrompt, system);
+                
+                aiResponseEl.innerHTML = `<p class="text-gray-700">${suggestion}</p>
+                    <div class="flex gap-2 mt-3">
+                        <button id="acceptAISuggestion" class="py-1 px-3 text-sm rounded-md font-semibold text-white bg-green-500 hover:bg-green-600">Accept</button>
+                        <button id="retryAISuggestion" class="py-1 px-3 text-sm rounded-md font-semibold text-gray-700 bg-gray-200 hover:bg-gray-300">Try Again</button>
+                    </div>`;
+
+                document.getElementById('acceptAISuggestion').addEventListener('click', () => {
+                    journalEntry.value += ` ${suggestion}`;
+                    aiResponseEl.innerHTML = '';
+                    aiPromptInput.value = '';
+                });
+                document.getElementById('retryAISuggestion').addEventListener('click', JournalLogic.handleAIHelperSend);
+            }
         };
         const TodoLogic = {
             getRecurrenceLabel: (key) => ({ daily: 'Daily', weekly: 'Weekly', biweekly: 'Bi-Weekly', monthly: 'Monthly', yearly: 'Yearly' }[key] || 'No Repeat'),
