@@ -88,6 +88,7 @@
         <p id="cardText" class="text-xl sm:text-2xl font-medium my-5 sm:my-10 px-2 sm:px-5"></p>
         <div class="flex justify-center gap-4">
           <button id="nextBtn" class="bg-white/30 backdrop-blur-sm text-white py-2.5 px-6 rounded-lg font-semibold transition-all duration-200 shadow-md hover:bg-white/40">Next Card</button>
+          <button id="journalBtn" class="bg-white/30 backdrop-blur-sm text-white py-2.5 px-6 rounded-lg font-semibold transition-all duration-200 shadow-md hover:bg-white/40">Journal</button>
           <button id="resetBtn" class="bg-white/30 backdrop-blur-sm text-white py-2.5 px-6 rounded-lg font-semibold transition-all duration-200 shadow-md hover:bg-white/40">Home</button>
         </div>
         <div id="statusText" class="text-sm text-white/80 mt-4"></div>
@@ -181,14 +182,28 @@
 
         // --- START: LOGIC MODULES ---
         let deck = [...AppData.cards];
+        let currentCardText = '';
         const CardLogic = {
             suitColorMap: { blue: 'card-area-blue', green: 'card-area-green', orange: 'card-area-orange', purple: 'card-area-purple' },
             updateStatus: () => { document.getElementById('statusText').textContent = `Cards left in deck: ${deck.length} / 52`; },
-            renderCard: (card) => { const cardArea = document.getElementById('cardArea'); document.getElementById('cardIcon').textContent = card.icon; document.getElementById('cardSuit').textContent = card.suit; document.getElementById('cardText').textContent = card.text; cardArea.className = "min-h-[420px] rounded-2xl p-6 pt-10 flex flex-col items-center justify-between shadow-lg text-center transition-all duration-500 ease-in-out text-white"; cardArea.classList.add(CardLogic.suitColorMap[card.suit_key] || ''); CardLogic.updateStatus(); },
+            renderCard: (card) => { 
+                const cardArea = document.getElementById('cardArea'); 
+                document.getElementById('cardIcon').textContent = card.icon; 
+                document.getElementById('cardSuit').textContent = card.suit; 
+                document.getElementById('cardText').textContent = card.text; 
+                currentCardText = card.text;
+                cardArea.className = "min-h-[420px] rounded-2xl p-6 pt-10 flex flex-col items-center justify-between shadow-lg text-center transition-all duration-500 ease-in-out text-white"; 
+                cardArea.classList.add(CardLogic.suitColorMap[card.suit_key] || ''); 
+                CardLogic.updateStatus(); 
+            },
             drawRandom: () => { if (deck.length === 0) return null; const idx = Math.floor(Math.random() * deck.length); return deck.splice(idx, 1)[0]; },
             drawAndDisplayCard: () => { const card = CardLogic.drawRandom(); if (card) { CardLogic.renderCard(card); ViewManager.showView('cardView'); } else { alert('Deck empty — please shuffle or return home.'); } },
             resetDeck: () => { deck = [...AppData.cards]; CardLogic.updateStatus(); ViewManager.showView('homeScreen'); },
-            bindEventListeners: () => { document.getElementById('nextBtn').addEventListener('click', CardLogic.drawAndDisplayCard); document.getElementById('resetBtn').addEventListener('click', CardLogic.resetDeck); }
+            bindEventListeners: () => { 
+                document.getElementById('nextBtn').addEventListener('click', CardLogic.drawAndDisplayCard); 
+                document.getElementById('resetBtn').addEventListener('click', CardLogic.resetDeck); 
+                document.getElementById('journalBtn').addEventListener('click', () => JournalLogic.showJournalWithCopingCard(currentCardText));
+            }
         };
         const ReflectionLogic = {
             fetchWithRetry: async (userQuery, systemPrompt) => {
@@ -225,9 +240,25 @@
                 document.getElementById('homeBtn').addEventListener('click', () => ViewManager.showView('homeScreen'));
             }
         };
-        let currentJournalKey = '';
         const JournalLogic = {
             _render: () => { const jEntry = document.getElementById('journalEntryView'); const jList = document.getElementById('journalListView'); const pManager = document.getElementById('promptManagerView'); if (jEntry) JournalLogic.showJournalEntryView(currentJournalKey); else if (jList) JournalLogic.showJournalListView(); else if (pManager) JournalLogic.showPromptManagerView(); },
+            showJournalWithCopingCard: (cardText) => {
+                JournalLogic.showJournalEntryView();
+                setTimeout(() => {
+                    const textarea = document.getElementById('journalEntry');
+                    const copingCardTemplate = AppData.DEFAULT_PROMPTS.find(p => p.name === "Coping Card Reflection")?.template;
+                    if (textarea && copingCardTemplate) {
+                        const populatedTemplate = copingCardTemplate.replace('[Insert Card Text Here]', cardText);
+                        if (textarea.value.trim() !== '' && !textarea.value.includes(cardText)) {
+                            if (confirm("Append coping card reflection to your current entry?")) {
+                                textarea.value += `\n\n${populatedTemplate}`;
+                            }
+                        } else {
+                            textarea.value = populatedTemplate;
+                        }
+                    }
+                }, 0);
+            },
             showJournalEntryView: (dateKey = null) => {
                 currentJournalKey = dateKey || DateUtils.getFormattedDate(new Date()); const prompts = [...AppData.DEFAULT_PROMPTS, ...Storage.getCustomPrompts()]; const promptOptions = prompts.map(p => `<option value="${p.template}">${p.name}</option>`).join('');
                 const body = `<div id="journalEntryView"><div class="flex justify-between items-center mb-4"><label for="entryDate" class="font-semibold text-gray-700">Date:</label><input type="date" id="entryDate" value="${currentJournalKey}" max="${DateUtils.getFormattedDate(new Date())}" class="p-2 border border-gray-300 rounded-lg"></div><div class="flex gap-2 items-center mb-4"><select id="promptSelect" class="flex-grow p-2 border border-gray-300 rounded-lg bg-white">${promptOptions}</select>${BaseButton('managePromptsBtn', 'Manage', 'py-2 px-3 !bg-white !text-gray-700 border border-gray-300 hover:!bg-gray-100')}</div><textarea id="journalEntry" class="w-full h-64 p-3 border border-gray-300 rounded-lg" placeholder="What's on your mind today?">${Storage.loadEntry(currentJournalKey)}</textarea><div class="mt-6 flex justify-between items-center">${BaseButton('viewAllEntriesBtn', 'View All', '!bg-white !text-gray-700 border border-gray-300 hover:!bg-gray-100')}<div class="flex gap-3">${BaseButton('saveJournalBtn', 'Save')}${HomeButton()}</div></div></div>`;
