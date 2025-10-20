@@ -253,12 +253,94 @@
         };
         const TodoLogic = {
             getRecurrenceLabel: (key) => ({ daily: 'Daily', weekly: 'Weekly', biweekly: 'Bi-Weekly', monthly: 'Monthly', yearly: 'Yearly' }[key] || 'No Repeat'),
-            _render: () => { TodoLogic.updateRecurringTasks(); const list = Storage.getTodoList().sort((a, b) => (a.dueDate && b.dueDate) ? new Date(a.dueDate) - new Date(b.dueDate) : a.dueDate ? -1 : 1); const listEl = document.getElementById('todoList'); if (!listEl) return; listEl.innerHTML = list.length ? list.map((item, index) => { const details = []; if (item.dueDate) details.push(`Due: ${DateUtils.formatDateForDisplayShort(item.dueDate)}`); if (item.recurrence && item.recurrence !== 'none') details.push(`Repeats: ${TodoLogic.getRecurrenceLabel(item.recurrence)}`); return `<li class="flex flex-col py-3 border-b border-gray-200"><div class="flex justify-between items-center"><span class="todo-text flex-grow cursor-pointer ${item.completed ? 'line-through text-gray-400' : 'text-gray-700'}" data-index="${index}">${item.task}</span><button class="delete-todo-btn py-1 px-3 text-red-600 rounded-md font-semibold transition-all duration-200 border border-gray-300 hover:bg-red-50" data-index="${index}">Remove</button></div>${details.length ? `<div class="text-sm text-gray-500 mt-1">${details.join(' | ')}</div>` : ''}</li>`; }).join('') : '<li class="text-center text-gray-500 py-4">Your list is clear!</li>'; document.querySelectorAll('.todo-text').forEach(el => el.addEventListener('click', (e) => TodoLogic.toggleTodoComplete(e.target.dataset.index))); document.querySelectorAll('.delete-todo-btn').forEach(el => el.addEventListener('click', (e) => TodoLogic.deleteTodo(e.target.dataset.index))); },
-            showTodoView: () => { const body = `<div id="todoView"><div class="grid grid-cols-1 md:grid-cols-2 gap-2 mb-4 items-end"><input type="text" id="todoInput" placeholder="Task description" class="p-2 border border-gray-300 rounded-lg md:col-span-2"><input type="date" id="todoDateInput" class="p-2 border border-gray-300 rounded-lg bg-white"><select id="todoRecurrenceSelect" class="p-2 border border-gray-300 rounded-lg bg-white"><option value="none">No Repeat</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="biweekly">Every 2 Weeks</option><option value="monthly">Monthly</option><option value="yearly">Yearly</option></select>${BaseButton('addTodoBtn', 'Add Task', 'bg-blue-600 text-white hover:bg-blue-700 border-blue-600 md:col-span-2')}</div><ul id="todoList" class="list-none p-0"></ul><div class="mt-6 flex justify-end">${HomeButton()}</div></div>`; ViewManager.renderContentCard('My To Do List', 'Keep track of small, actionable tasks.', body); document.getElementById('addTodoBtn').addEventListener('click', TodoLogic.addTodo); document.getElementById('homeBtn').addEventListener('click', () => ViewManager.showView('homeScreen')); TodoLogic._render(); },
-            addTodo: () => { const input = document.getElementById('todoInput'); if (input.value.trim()) { const list = Storage.getTodoList(); list.push({ task: input.value.trim(), completed: false, dueDate: document.getElementById('todoDateInput').value || '', recurrence: document.getElementById('todoRecurrenceSelect').value || 'none' }); Storage.saveTodoList(list); input.value = ''; document.getElementById('todoDateInput').value = ''; document.getElementById('todoRecurrenceSelect').value = 'none'; TodoLogic._render(); } else { alert('Please enter a task description.'); } },
-            toggleTodoComplete: (index) => { const list = Storage.getTodoList(); if (list[index]) { list[index].completed = !list[index].completed; Storage.saveTodoList(list); TodoLogic._render(); } },
-            deleteTodo: (index) => { const list = Storage.getTodoList(); list.splice(index, 1); Storage.saveTodoList(list); TodoLogic._render(); },
-            updateRecurringTasks: () => { let list = Storage.getTodoList(); const todayStr = DateUtils.getFormattedDate(new Date()); let updated = false; list.forEach(item => { if (item.completed && item.recurrence !== 'none' && item.dueDate && item.dueDate < todayStr) { let nextDate = new Date(item.dueDate.replace(/-/g, '\/')); while (DateUtils.getFormattedDate(nextDate) <= todayStr) { switch (item.recurrence) { case 'daily': nextDate.setDate(nextDate.getDate() + 1); break; case 'weekly': nextDate.setDate(nextDate.getDate() + 7); break; case 'biweekly': nextDate.setDate(nextDate.getDate() + 14); break; case 'monthly': nextDate.setMonth(nextDate.getMonth() + 1); break; case 'yearly': nextDate.setFullYear(nextDate.getFullYear() + 1); break; } } item.dueDate = DateUtils.getFormattedDate(nextDate); item.completed = false; updated = true; } }); if (updated) Storage.saveTodoList(list); }
+            _render: () => {
+                TodoLogic.updateRecurringTasks();
+                const list = Storage.getTodoList().sort((a, b) => {
+                    if (a.completed !== b.completed) {
+                        return a.completed ? 1 : -1;
+                    }
+                    if (a.dueDate && b.dueDate) return new Date(a.dueDate) - new Date(b.dueDate);
+                    return a.dueDate ? -1 : 1;
+                });
+                const listEl = document.getElementById('todoList');
+                if (!listEl) return;
+                listEl.innerHTML = list.length ? list.map((item, index) => {
+                    const details = [];
+                    if (item.dueDate) details.push(`Due: ${DateUtils.formatDateForDisplayShort(item.dueDate)}`);
+                    if (item.recurrence && item.recurrence !== 'none') details.push(`Repeats: ${TodoLogic.getRecurrenceLabel(item.recurrence)}`);
+                    return `
+                        <li class="flex flex-col py-3 border-b border-gray-200">
+                            <div class="flex justify-between items-center">
+                                <span class="todo-text flex-grow cursor-pointer ${item.completed ? 'line-through text-gray-400' : 'text-gray-700'}" data-index="${index}">${item.task}</span>
+                                <div class="flex items-center gap-2">
+                                    ${!item.completed ? `<button class="complete-todo-btn py-1 px-3 rounded-md font-semibold text-white bg-blue-500 hover:bg-blue-600" data-index="${index}">Complete</button>` : ''}
+                                    <button class="delete-todo-btn py-1 px-3 text-red-600 rounded-md font-semibold transition-all duration-200 border border-gray-300 hover:bg-red-50" data-index="${index}">Delete</button>
+                                </div>
+                            </div>
+                            ${details.length ? `<div class="text-sm text-gray-500 mt-1">${details.join(' | ')}</div>` : ''}
+                        </li>`;
+                }).join('') : '<li class="text-center text-gray-500 py-4">Your list is clear!</li>';
+                
+                document.querySelectorAll('.todo-text').forEach(el => el.addEventListener('click', (e) => TodoLogic.toggleTodoComplete(e.target.dataset.index)));
+                document.querySelectorAll('.complete-todo-btn').forEach(el => el.addEventListener('click', (e) => TodoLogic.handleCompleteTask(e.target.dataset.index)));
+                document.querySelectorAll('.delete-todo-btn').forEach(el => el.addEventListener('click', (e) => TodoLogic.deleteTodo(e.target.dataset.index)));
+            },
+            showTodoView: () => {
+                const body = `<div id="todoView"><div class="grid grid-cols-1 md:grid-cols-2 gap-2 mb-4 items-end"><input type="text" id="todoInput" placeholder="Task description" class="p-2 border border-gray-300 rounded-lg md:col-span-2"><input type="date" id="todoDateInput" class="p-2 border border-gray-300 rounded-lg bg-white"><select id="todoRecurrenceSelect" class="p-2 border border-gray-300 rounded-lg bg-white"><option value="none">No Repeat</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="biweekly">Every 2 Weeks</option><option value="monthly">Monthly</option><option value="yearly">Yearly</option></select>${BaseButton('addTodoBtn', 'Add Task', 'bg-blue-600 text-white hover:bg-blue-700 border-blue-600 md:col-span-2')}</div><ul id="todoList" class="list-none p-0"></ul><div class="mt-6 flex justify-end">${HomeButton()}</div></div>`;
+                ViewManager.renderContentCard('My To Do List', 'Keep track of small, actionable tasks.', body);
+                document.getElementById('addTodoBtn').addEventListener('click', TodoLogic.addTodo);
+                document.getElementById('homeBtn').addEventListener('click', () => ViewManager.showView('homeScreen'));
+                TodoLogic._render();
+            },
+            addTodo: () => {
+                const input = document.getElementById('todoInput');
+                if (input.value.trim()) {
+                    const list = Storage.getTodoList();
+                    list.push({ task: input.value.trim(), completed: false, dueDate: document.getElementById('todoDateInput').value || '', recurrence: document.getElementById('todoRecurrenceSelect').value || 'none' });
+                    Storage.saveTodoList(list);
+                    input.value = ''; document.getElementById('todoDateInput').value = ''; document.getElementById('todoRecurrenceSelect').value = 'none';
+                    TodoLogic._render();
+                } else { alert('Please enter a task description.'); }
+            },
+            handleCompleteTask: (index) => {
+                const list = Storage.getTodoList();
+                const item = list[index];
+                if (!item) return;
+
+                if (item.recurrence !== 'none' && item.dueDate) {
+                    let nextDate = new Date(item.dueDate.replace(/-/g, '\/'));
+                    switch (item.recurrence) {
+                        case 'daily': nextDate.setDate(nextDate.getDate() + 1); break;
+                        case 'weekly': nextDate.setDate(nextDate.getDate() + 7); break;
+                        case 'biweekly': nextDate.setDate(nextDate.getDate() + 14); break;
+                        case 'monthly': nextDate.setMonth(nextDate.getMonth() + 1); break;
+                        case 'yearly': nextDate.setFullYear(nextDate.getFullYear() + 1); break;
+                    }
+                    list.push({ task: item.task, completed: false, dueDate: DateUtils.getFormattedDate(nextDate), recurrence: item.recurrence });
+                    item.recurrence = 'none'; // Detach from series
+                }
+                
+                item.completed = true;
+                Storage.saveTodoList(list);
+                TodoLogic._render();
+            },
+            toggleTodoComplete: (index) => {
+                const list = Storage.getTodoList();
+                if (list[index] && list[index].recurrence === 'none') {
+                    list[index].completed = !list[index].completed;
+                    Storage.saveTodoList(list);
+                    TodoLogic._render();
+                }
+            },
+            deleteTodo: (index) => {
+                if (confirm("Are you sure you want to permanently delete this task?")) {
+                    const list = Storage.getTodoList();
+                    list.splice(index, 1);
+                    Storage.saveTodoList(list);
+                    TodoLogic._render();
+                }
+            },
+            updateRecurringTasks: () => { let list = Storage.getTodoList(); const todayStr = DateUtils.getFormattedDate(new Date()); let updated = false; list.forEach(item => { if (!item.completed && item.recurrence !== 'none' && item.dueDate && item.dueDate < todayStr) { let nextDate = new Date(item.dueDate.replace(/-/g, '\/')); while (DateUtils.getFormattedDate(nextDate) <= todayStr) { switch (item.recurrence) { case 'daily': nextDate.setDate(nextDate.getDate() + 1); break; case 'weekly': nextDate.setDate(nextDate.getDate() + 7); break; case 'biweekly': nextDate.setDate(nextDate.getDate() + 14); break; case 'monthly': nextDate.setMonth(nextDate.getMonth() + 1); break; case 'yearly': nextDate.setFullYear(nextDate.getFullYear() + 1); break; } } item.dueDate = DateUtils.getFormattedDate(nextDate); updated = true; } }); if (updated) Storage.saveTodoList(list); }
         };
         const WorkbookLogic = {
             _renderStep: (stepKey) => {
